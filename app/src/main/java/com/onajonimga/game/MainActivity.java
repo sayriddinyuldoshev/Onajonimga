@@ -6,531 +6,523 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.view.*;
-import android.view.animation.*;
 import android.widget.*;
 import java.util.*;
 
 public class MainActivity extends Activity {
 
-    final int N = 7;
-    final String[] flowers = {"🌹","🌷","🌻","🌸","🌼","🌺"};
-    final int BG = Color.rgb(255,239,247);
-    final int PINK = Color.rgb(190,65,125);
-    final int PURPLE = Color.rgb(130,75,155);
+    final String[] names = {"MEVALAR","GULLAR","SHIRINLIKLAR","HAYVONLAR"};
+    final String[] icons = {"🍓","🌸","🍬","🐼"};
+    final int[][] palettes = {
+        {0xFFFFE6D9,0xFFE87950},
+        {0xFFFFE3EF,0xFFC64B88},
+        {0xFFFFF0D2,0xFFD28B30},
+        {0xFFE0F2FF,0xFF4286C5}
+    };
 
-    int[][] board = new int[N][N];
-    TextView[][] cells = new TextView[N][N];
+    final String[][] items = {
+        {"🍎","🍐","🍊","🍋","🍇","🍓","🍉","🍒","🥝"},
+        {"🌹","🌷","🌻","🌸","🌼","🌺","💐","🌱","🪻"},
+        {"🍬","🍭","🍫","🍩","🍪","🧁","🍰","🍦","🍡"},
+        {"🐱","🐶","🐼","🐸","🦊","🐰","🐻","🐵","🐧"}
+    };
 
-    int level = 1, score = 0, best = 0;
-    int moves = 25, target = 100;
-    int selected = -1;
-    int combo = 1;
-    boolean busy = false;
+    static class Tile {
+        int id,row,col,layer,type;
+        boolean removed;
 
-    GridLayout grid;
-    LinearLayout scoreView, movesView, targetView;
-    TextView levelView, bestView, progressView;
-
-    Random random = new Random();
-    Handler handler = new Handler();
-
-    int dp(float n) {
-        return (int)(n * getResources().getDisplayMetrics().density);
+        Tile(int i,int r,int c,int l,int t) {
+            id=i; row=r; col=c; layer=l; type=t;
+        }
     }
 
-    GradientDrawable shape(int color, int radius, int stroke) {
-        GradientDrawable d = new GradientDrawable();
+    int mode=0, level=1, score=0, coins=755;
+    boolean gameOver=false;
+    Tile lastUndo=null;
+
+    ArrayList<Tile> tiles = new ArrayList<>();
+    ArrayList<Integer> tray = new ArrayList<>();
+
+    Random random = new Random();
+
+    LinearLayout root, trayRow;
+    FrameLayout boardFrame;
+    TextView scoreView,levelView,coinView,remainingView;
+    ScrollView scroll;
+
+    int dp(float n) {
+        return (int)(n*getResources().getDisplayMetrics().density);
+    }
+
+    GradientDrawable shape(int color,int radius,int stroke) {
+        GradientDrawable d=new GradientDrawable();
         d.setColor(color);
         d.setCornerRadius(dp(radius));
-        if (stroke > 0) d.setStroke(dp(1), stroke);
+        if(stroke!=0) d.setStroke(dp(1),stroke);
         return d;
     }
 
-    TextView text(String s, int size, int color, boolean bold) {
-        TextView t = new TextView(this);
+    TextView text(String s,int size,int color,boolean bold) {
+        TextView t=new TextView(this);
         t.setText(s);
         t.setTextSize(size);
         t.setTextColor(color);
         t.setGravity(Gravity.CENTER);
-        if (bold) t.setTypeface(null, Typeface.BOLD);
         t.setPadding(dp(5),dp(5),dp(5),dp(5));
+        if(bold) t.setTypeface(null,Typeface.BOLD);
         return t;
     }
 
     LinearLayout vertical() {
-        LinearLayout l = new LinearLayout(this);
+        LinearLayout l=new LinearLayout(this);
         l.setOrientation(LinearLayout.VERTICAL);
         return l;
     }
 
-    LinearLayout.LayoutParams lp(int w, int h) {
-        return new LinearLayout.LayoutParams(w,h);
-    }
-
-    TextView button(String title) {
-        TextView b = text(title,14,Color.WHITE,true);
-        b.setBackground(shape(PINK,18,0));
-        b.setPadding(dp(15),dp(12),dp(15),dp(12));
-        b.setElevation(dp(3));
-        return b;
+    TextView button(String s) {
+        TextView t=text(s,15,Color.WHITE,true);
+        t.setBackground(shape(0xFF344F86,18,0xFF91B8F5));
+        t.setElevation(dp(3));
+        t.setPadding(dp(10),dp(12),dp(10),dp(12));
+        return t;
     }
 
     @Override
     public void onCreate(Bundle b) {
         super.onCreate(b);
-
-        getWindow().setStatusBarColor(Color.rgb(245,215,230));
-        getWindow().setNavigationBarColor(Color.rgb(255,239,247));
-
-        level = getPreferences(0).getInt("level",1);
-        best = getPreferences(0).getInt("best",0);
-
-        if (level < 1 || level > 100) level = 1;
-
-        startLevel();
+        getWindow().setStatusBarColor(0xFF347EC5);
+        getWindow().setNavigationBarColor(0xFF172B53);
+        coins=getPreferences(0).getInt("coins",755);
+        showHome();
     }
 
-    void startLevel() {
-        score = 0;
-        selected = -1;
-        busy = false;
-        combo = 1;
+    void addModeCard(LinearLayout parent,int m) {
+        TextView card=text(
+            icons[m]+"   "+names[m]+"\n"+
+            "O‘zingiz yoqtirgan mavzuda o‘ynang",
+            18,Color.WHITE,true
+        );
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(20),dp(10),dp(12),dp(10));
+        card.setBackground(shape(palettes[m][1],20,Color.WHITE));
+        card.setElevation(dp(4));
 
-        moves = Math.max(15,25-(level-1)/10);
-        target = 100+(level-1)*75;
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(
+            -1,dp(82));
+        p.setMargins(0,dp(7),0,dp(7));
+        parent.addView(card,p);
 
-        fillBoard();
+        card.setOnClickListener(v -> startMode(m));
+    }
+
+    void showHome() {
+        scroll=new ScrollView(this);
+        LinearLayout page=vertical();
+        page.setPadding(dp(20),dp(22),dp(20),dp(25));
+        page.setGravity(Gravity.CENTER_HORIZONTAL);
+        page.setBackground(new GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            new int[]{0xFF3E8DD1,0xFFB6DDF4,0xFFFFEAF2}
+        ));
+
+        page.addView(text("🌸 ONAJONIMGA 🌸",30,Color.WHITE,true));
+        page.addView(text("MEHR BILAN YARATILGAN O‘YIN",13,Color.WHITE,true));
+        page.addView(text("Qaysi mavzuda o‘ynaysiz?",21,0xFF253F70,true));
+
+        addModeCard(page,0);
+        addModeCard(page,1);
+        addModeCard(page,2);
+        addModeCard(page,3);
+
+        TextView mix=button("🎲 TASODIFIY MAVZU");
+        LinearLayout.LayoutParams mp=new LinearLayout.LayoutParams(-1,dp(55));
+        mp.setMargins(0,dp(12),0,dp(15));
+        page.addView(mix,mp);
+        mix.setOnClickListener(v -> startMode(random.nextInt(4)));
+
+        page.addView(text("100 BOSQICH  •  OFFLINE O‘YIN",13,0xFF344F86,true));
+        page.addView(text("❤️ ONAJON, SIZNI YAXSHI KO‘RAMAN!",15,0xFFC64B88,true));
+
+        scroll.addView(page);
+        setContentView(scroll);
+    }
+
+    void startMode(int m) {
+        mode=m;
+        level=getPreferences(0).getInt("level_"+mode,1);
+        if(level<1 || level>100) level=1;
+        startGame();
+    }
+
+    void startGame() {
+        score=0;
+        tray.clear();
+        tiles.clear();
+        lastUndo=null;
+        gameOver=false;
+
+        ArrayList<Integer> deck=new ArrayList<>();
+        for(int i=0;i<9;i++)
+            for(int j=0;j<9;j++)
+                deck.add(i);
+        Collections.shuffle(deck,random);
+
+        ArrayList<int[]> positions=new ArrayList<>();
+
+        // Pastki qatlam: 7 x 7
+        for(int r=0;r<7;r++)
+            for(int c=0;c<7;c++)
+                positions.add(new int[]{r,c,0});
+
+        // O‘rta qatlam: 5 x 5
+        for(int r=1;r<=5;r++)
+            for(int c=1;c<=5;c++)
+                positions.add(new int[]{r,c,1});
+
+        // Yuqori qatlam: 7 ta plitka
+        for(int c=0;c<7;c++)
+            positions.add(new int[]{3,c,2});
+
+        for(int i=0;i<positions.size();i++) {
+            int[] p=positions.get(i);
+            tiles.add(new Tile(i,p[0],p[1],p[2],deck.get(i)));
+        }
+
         showGame();
     }
 
-    void fillBoard() {
-        for (int r=0;r<N;r++) {
-            for (int c=0;c<N;c++) {
-                int v;
-                do {
-                    v = random.nextInt(flowers.length);
-                    board[r][c] = v;
-                } while (
-                    (c>=2 && board[r][c-1]==v && board[r][c-2]==v) ||
-                    (r>=2 && board[r-1][c]==v && board[r-2][c]==v)
-                );
-            }
-        }
-    }
-
     void showGame() {
-        ScrollView scroll = new ScrollView(this);
-
-        LinearLayout root = vertical();
+        scroll=new ScrollView(this);
+        root=vertical();
+        root.setPadding(dp(12),dp(12),dp(12),dp(20));
         root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(dp(13),dp(12),dp(13),dp(15));
         root.setBackground(new GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
-            new int[]{Color.rgb(255,229,241),BG,Color.WHITE}
+            new int[]{0xFF3D87CB,0xFF8DC5EB,0xFFEAF4FA}
         ));
 
-        TextView title = text("🌸 ONAJONIMGA 🌸",29,PINK,true);
-        root.addView(title,lp(-1,-2));
+        LinearLayout top=new LinearLayout(this);
+        top.setGravity(Gravity.CENTER_VERTICAL);
 
-        root.addView(text(
-            "ONAJONIM UCHUN MEHR BILAN ❤️",12,PURPLE,true
-        ));
+        TextView home=button("⌂");
+        TextView title=text("ONAJONIMGA",21,Color.WHITE,true);
 
-        root.addView(text("✦  FLOWER GARDEN  ✦",12,PURPLE,true));
+        top.addView(home, new LinearLayout.LayoutParams(dp(55),dp(48)));
+        top.addView(title,new LinearLayout.LayoutParams(0,-2,1));
+        root.addView(top);
 
-        LinearLayout levelCard = vertical();
-        levelCard.setGravity(Gravity.CENTER);
-        levelCard.setPadding(dp(12),dp(9),dp(12),dp(9));
-        levelCard.setBackground(shape(Color.WHITE,20,Color.rgb(245,190,215)));
+        home.setOnClickListener(v -> showHome());
 
-        levelView = text("LEVEL "+level+" / 100",23,PINK,true);
-        levelCard.addView(levelView);
-
-        TextView subtitle = text("Har bir gul — onajoningizga mehr!",12,PURPLE,false);
-        levelCard.addView(subtitle);
-
-        root.addView(levelCard,lp(-1,-2));
-
-        LinearLayout stats = new LinearLayout(this);
-        stats.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout stats=new LinearLayout(this);
         stats.setGravity(Gravity.CENTER);
-        stats.setPadding(0,dp(10),0,dp(8));
+        stats.setPadding(0,dp(8),0,dp(8));
 
-        scoreView = statCard("⭐ OCHKO","0");
-        movesView = statCard("👣 YURISH",""+moves);
-        targetView = statCard("🎯 MAQSAD",""+target);
+        coinView=text("🪙 "+coins,17,Color.WHITE,true);
+        levelView=text("LEVEL "+level+"/100",17,Color.WHITE,true);
+        scoreView=text("⭐ "+score,17,Color.WHITE,true);
 
-        stats.addView(scoreView,new LinearLayout.LayoutParams(0,dp(76),1));
-        stats.addView(movesView,new LinearLayout.LayoutParams(0,dp(76),1));
-        stats.addView(targetView,new LinearLayout.LayoutParams(0,dp(76),1));
-
+        stats.addView(coinView,new LinearLayout.LayoutParams(0,dp(55),1));
+        stats.addView(levelView,new LinearLayout.LayoutParams(0,dp(55),1));
+        stats.addView(scoreView,new LinearLayout.LayoutParams(0,dp(55),1));
         root.addView(stats);
 
-        bestView = text("🏆 Rekord: "+best,14,PURPLE,true);
-        root.addView(bestView);
-
-        progressView = text("Maqsad sari: 0%",13,PINK,true);
-        root.addView(progressView);
-
         root.addView(text(
-            "Bir xil 3 yoki undan ortiq gulni birlashtiring",
-            13,Color.DKGRAY,false
+            icons[mode]+"  "+names[mode],19,Color.WHITE,true
         ));
 
-        grid = new GridLayout(this);
-        grid.setColumnCount(N);
-        grid.setRowCount(N);
-        grid.setPadding(dp(5),dp(5),dp(5),dp(5));
-        grid.setBackground(shape(Color.rgb(250,205,225),20,Color.WHITE));
-        grid.setElevation(dp(4));
+        root.addView(text("UCHTA BIR XIL P L I T K A N I  YIG‘ING",12,Color.WHITE,true));
 
-        int width = getResources().getDisplayMetrics().widthPixels;
-        int cell = (width-dp(62))/N;
+        LinearLayout trayBox=vertical();
+        trayBox.setPadding(dp(5),dp(5),dp(5),dp(5));
+        trayBox.setBackground(shape(0xFF263F70,17,0xFF8ABCF2));
 
-        for(int r=0;r<N;r++) {
-            for(int c=0;c<N;c++) {
-                TextView tile = text("",23,Color.BLACK,false);
-                cells[r][c] = tile;
+        trayRow=new LinearLayout(this);
+        trayRow.setGravity(Gravity.CENTER);
+        trayBox.addView(trayRow);
+        root.addView(trayBox,new LinearLayout.LayoutParams(-1,dp(70)));
 
-                GridLayout.LayoutParams p = new GridLayout.LayoutParams();
-                p.width = cell;
-                p.height = cell;
-                p.setMargins(dp(1),dp(1),dp(1),dp(1));
+        remainingView=text("",13,Color.WHITE,true);
+        root.addView(remainingView);
 
-                grid.addView(tile,p);
+        boardFrame=new FrameLayout(this);
+        boardFrame.setClipChildren(false);
+        boardFrame.setBackground(shape(0x55304F83,18,0xFFB9D9F6));
+        boardFrame.setElevation(dp(5));
 
-                final int rr=r, cc=c;
-                tile.setOnClickListener(v -> tap(rr,cc));
-            }
-        }
+        int screen=getResources().getDisplayMetrics().widthPixels;
+        int tileW=(screen-dp(52))/7;
+        int tileH=dp(47);
 
-        LinearLayout.LayoutParams boardParams = lp(-2,-2);
-        boardParams.setMargins(0,dp(10),0,dp(10));
-        root.addView(grid,boardParams);
+        FrameLayout.LayoutParams bp=new FrameLayout.LayoutParams(
+            tileW*7+dp(10),tileH*7+dp(10),Gravity.CENTER
+        );
 
-        LinearLayout actions = new LinearLayout(this);
+        root.addView(boardFrame,bp);
+        root.addView(text("Plitkalarni tanlang va 3 tasini birlashtiring",13,Color.WHITE,true));
+
+        LinearLayout actions=new LinearLayout(this);
         actions.setGravity(Gravity.CENTER);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setPadding(0,dp(12),0,dp(12));
 
-        TextView restart = button("↻ QAYTA");
-        TextView shuffle = button("✦ ARALASHTIR");
+        TextView undo=button("↶\nQAYTAR");
+        TextView hint=button("💡\nMASLAHAT");
+        TextView shuffle=button("🔀\nARALASHTIR");
 
-        LinearLayout.LayoutParams actionParams =
-            new LinearLayout.LayoutParams(0,-2,1);
-        actionParams.setMargins(dp(4),0,dp(4),0);
+        LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,dp(65),1);
+        ap.setMargins(dp(3),0,dp(3),0);
 
-        actions.addView(restart,actionParams);
-        actions.addView(shuffle,actionParams);
+        actions.addView(undo,ap);
+        actions.addView(hint,ap);
+        actions.addView(shuffle,ap);
         root.addView(actions);
 
-        restart.setOnClickListener(v -> confirmRestart());
-        shuffle.setOnClickListener(v -> shuffleBoard());
+        undo.setOnClickListener(v -> undoMove());
+        hint.setOnClickListener(v -> giveHint());
+        shuffle.setOnClickListener(v -> shuffleTiles());
 
-        root.addView(text(
-            "💗 ONAJON, SIZNI JUDA YAXSHI KO‘RAMAN! 💗",
-            14,PINK,true
-        ));
-
-        root.addView(text(
-            "100 ta bosqich • Offline o‘yin",
-            11,PURPLE,false
-        ));
+        root.addView(text("❤️ ONAJONIMGA MEHR BILAN ❤️",14,0xFFB52F75,true));
 
         scroll.addView(root);
         setContentView(scroll);
-
-        update();
+        updateGame();
     }
 
-    LinearLayout statCard(String name,String value) {
-        LinearLayout card = vertical();
-        card.setGravity(Gravity.CENTER);
-        card.setBackground(shape(Color.WHITE,15,Color.rgb(245,200,220)));
-        card.setPadding(dp(3),dp(5),dp(3),dp(5));
-
-        TextView a = text(name,10,PURPLE,true);
-        TextView b = text(value,19,PINK,true);
-
-        card.addView(a);
-        card.addView(b);
-
-        if(name.contains("OCHKO")) scoreHolder = b;
-        if(name.contains("YURISH")) movesHolder = b;
-        if(name.contains("MAQSAD")) targetHolder = b;
-
-        return card;
+    boolean isFree(Tile t) {
+        for(Tile other:tiles) {
+            if(!other.removed &&
+               other.layer>t.layer &&
+               other.row==t.row &&
+               other.col==t.col)
+                return false;
+        }
+        return true;
     }
 
-    TextView scoreHolder, movesHolder, targetHolder;
+    void renderBoard() {
+        boardFrame.removeAllViews();
 
-    void update() {
-        for(int r=0;r<N;r++) {
-            for(int c=0;c<N;c++) {
-                TextView t = cells[r][c];
-                int pos = r*N+c;
+        int screen=getResources().getDisplayMetrics().widthPixels;
+        int tileW=(screen-dp(52))/7;
+        int tileH=dp(47);
 
-                t.setText(board[r][c] < 0 ? "" : flowers[board[r][c]]);
-                t.setBackground(shape(
-                    selected==pos ? Color.rgb(255,170,205) : Color.WHITE,
-                    11,
-                    selected==pos ? PINK : Color.rgb(250,215,230)
-                ));
+        for(Tile tile:tiles) {
+            if(tile.removed) continue;
 
-                t.setScaleX(1f);
-                t.setScaleY(1f);
-                t.setAlpha(1f);
+            TextView view=text(items[mode][tile.type],25,Color.BLACK,false);
+            view.setBackground(shape(
+                0xFFFFFFFF,10,
+                tile.layer==2 ? 0xFFFFD77A : 0xFFB9CBE2
+            ));
+            view.setElevation(dp(2+tile.layer*3));
+
+            FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(
+                tileW-dp(3),tileH-dp(3)
+            );
+            p.leftMargin=tile.col*tileW+dp(tile.layer*2);
+            p.topMargin=tile.row*tileH+dp(tile.layer*2);
+
+            boardFrame.addView(view,p);
+
+            if(isFree(tile)) {
+                view.setOnClickListener(v -> pickTile(tile));
+            } else {
+                view.setAlpha(0.88f);
             }
         }
-
-        scoreHolder.setText(""+score);
-        movesHolder.setText(""+moves);
-        targetHolder.setText(""+target);
-
-        levelView.setText("LEVEL "+level+" / 100");
-        bestView.setText("🏆 Rekord: "+best);
-
-        int percent = Math.min(100,score*100/Math.max(1,target));
-        progressView.setText("Maqsad sari: "+percent+"%");
     }
 
-    void tap(int r,int c) {
-        if(busy || moves<=0) return;
+    void renderTray() {
+        trayRow.removeAllViews();
 
-        int pos=r*N+c;
+        for(int i=0;i<7;i++) {
+            TextView slot;
+            if(i<tray.size())
+                slot=text(items[mode][tray.get(i)],23,Color.BLACK,false);
+            else
+                slot=text("",20,Color.WHITE,false);
 
-        if(selected<0) {
-            selected=pos;
-            cells[r][c].animate()
-                .scaleX(1.12f).scaleY(1.12f)
-                .setDuration(100).start();
-            update();
-            return;
+            slot.setBackground(shape(
+                0xFF172F5A,9,0xFF5277AA
+            ));
+
+            LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(
+                0,dp(53),1
+            );
+            p.setMargins(dp(2),0,dp(2),0);
+            trayRow.addView(slot,p);
         }
-
-        int sr=selected/N;
-        int sc=selected%N;
-        selected=-1;
-
-        if(Math.abs(sr-r)+Math.abs(sc-c)!=1) {
-            update();
-            return;
-        }
-
-        int temp=board[r][c];
-        board[r][c]=board[sr][sc];
-        board[sr][sc]=temp;
-
-        if(countMatches()==0) {
-            temp=board[r][c];
-            board[r][c]=board[sr][sc];
-            board[sr][sc]=temp;
-
-            cells[sr][sc].animate()
-                .translationX(dp(5))
-                .setDuration(80)
-                .withEndAction(() ->
-                    cells[sr][sc].animate().translationX(0).start()
-                ).start();
-
-            update();
-            return;
-        }
-
-        moves--;
-        busy=true;
-
-        cells[r][c].animate().scaleX(1.15f).scaleY(1.15f)
-            .setDuration(100).start();
-
-        resolve(1);
     }
 
-    boolean[][] matches() {
-        boolean[][] mark = new boolean[N][N];
-
-        for(int r=0;r<N;r++) {
-            int c=0;
-            while(c<N) {
-                int v=board[r][c];
-                int end=c+1;
-
-                while(v>=0 && end<N && board[r][end]==v) end++;
-
-                if(v>=0 && end-c>=3)
-                    for(int k=c;k<end;k++) mark[r][k]=true;
-
-                c=end;
-            }
-        }
-
-        for(int c=0;c<N;c++) {
-            int r=0;
-            while(r<N) {
-                int v=board[r][c];
-                int end=r+1;
-
-                while(v>=0 && end<N && board[end][c]==v) end++;
-
-                if(v>=0 && end-r>=3)
-                    for(int k=r;k<end;k++) mark[k][c]=true;
-
-                r=end;
-            }
-        }
-
-        return mark;
-    }
-
-    int countMatches() {
-        boolean[][] m=matches();
+    int remaining() {
         int n=0;
-
-        for(int r=0;r<N;r++)
-            for(int c=0;c<N;c++)
-                if(m[r][c]) n++;
-
+        for(Tile t:tiles) if(!t.removed) n++;
         return n;
     }
 
-    void resolve(int chain) {
-        boolean[][] mark=matches();
-        int count=0;
+    void updateGame() {
+        renderBoard();
+        renderTray();
 
-        for(int r=0;r<N;r++)
-            for(int c=0;c<N;c++)
-                if(mark[r][c]) count++;
+        scoreView.setText("⭐ "+score);
+        levelView.setText("LEVEL "+level+"/100");
+        coinView.setText("🪙 "+coins);
+        remainingView.setText("Qolgan plitkalar: "+remaining());
+    }
 
-        if(count==0) {
-            busy=false;
-            update();
+    int countType(int type) {
+        int n=0;
+        for(int v:tray) if(v==type) n++;
+        return n;
+    }
 
-            if(score>=target) winLevel();
-            else if(moves<=0) loseLevel();
+    void pickTile(Tile tile) {
+        if(gameOver || tile.removed || !isFree(tile)) return;
 
+        tile.removed=true;
+        tray.add(tile.type);
+        lastUndo=tile;
+
+        if(countType(tile.type)>=3) {
+            int removed=0;
+            for(int i=tray.size()-1;i>=0 && removed<3;i--) {
+                if(tray.get(i)==tile.type) {
+                    tray.remove(i);
+                    removed++;
+                }
+            }
+
+            score+=30;
+            coins+=5;
+            lastUndo=null;
+
+            getPreferences(0).edit()
+                .putInt("coins",coins).apply();
+
+            Toast.makeText(this,
+                "✨ Ajoyib! +30 ochko, +5 tanga",
+                Toast.LENGTH_SHORT).show();
+        }
+
+        updateGame();
+
+        if(tray.size()>=7) {
+            loseGame();
             return;
         }
 
-        score += count*10*chain;
-        if(score>best) {
-            best=score;
-            getPreferences(0).edit().putInt("best",best).apply();
+        if(remaining()==0) {
+            if(tray.isEmpty()) winGame();
+            else loseGame();
+        }
+    }
+
+    void undoMove() {
+        if(gameOver) return;
+
+        if(lastUndo==null || !lastUndo.removed) {
+            Toast.makeText(this,"Qaytarish uchun yurish yo‘q",Toast.LENGTH_SHORT).show();
+            return;
         }
 
-        for(int r=0;r<N;r++) {
-            for(int c=0;c<N;c++) {
-                if(mark[r][c]) {
-                    board[r][c]=-1;
-                    cells[r][c].animate()
-                        .scaleX(0.15f).scaleY(0.15f)
-                        .alpha(0f).setDuration(170).start();
-                }
+        for(int i=tray.size()-1;i>=0;i--) {
+            if(tray.get(i)==lastUndo.type) {
+                tray.remove(i);
+                break;
             }
         }
 
-        update();
-
-        final int next=chain+1;
-
-        handler.postDelayed(() -> {
-            dropFlowers();
-            update();
-            resolve(next);
-        },190);
+        lastUndo.removed=false;
+        lastUndo=null;
+        updateGame();
     }
 
-    void dropFlowers() {
-        for(int c=0;c<N;c++) {
-            int write=N-1;
+    void giveHint() {
+        if(gameOver) return;
 
-            for(int r=N-1;r>=0;r--) {
-                if(board[r][c]>=0)
-                    board[write--][c]=board[r][c];
+        for(Tile t:tiles) {
+            if(!t.removed && isFree(t) && countType(t.type)>0) {
+                Toast.makeText(this,
+                    "Maslahat: "+items[mode][t.type]+" plitkasini tanlang",
+                    Toast.LENGTH_SHORT).show();
+                return;
             }
+        }
 
-            while(write>=0)
-                board[write--][c]=random.nextInt(flowers.length);
+        for(Tile t:tiles) {
+            if(!t.removed && isFree(t)) {
+                Toast.makeText(this,
+                    "Ochiq plitka: "+items[mode][t.type],
+                    Toast.LENGTH_SHORT).show();
+                return;
+            }
         }
     }
 
-    void shuffleBoard() {
-        if(busy) return;
+    void shuffleTiles() {
+        if(gameOver) return;
 
-        selected=-1;
-        fillBoard();
-        update();
+        ArrayList<Integer> deck=new ArrayList<>();
+        for(Tile t:tiles)
+            if(!t.removed) deck.add(t.type);
 
-        Toast.makeText(this,
-            "🌸 Gullar yangilandi!",
-            Toast.LENGTH_SHORT).show();
+        Collections.shuffle(deck,random);
+
+        int i=0;
+        for(Tile t:tiles)
+            if(!t.removed) t.type=deck.get(i++);
+
+        lastUndo=null;
+        updateGame();
+
+        Toast.makeText(this,"🔀 Plitkalar aralashtirildi",Toast.LENGTH_SHORT).show();
     }
 
-    void confirmRestart() {
-        new AlertDialog.Builder(this)
-            .setTitle("🌷 Qayta boshlash")
-            .setMessage("Ushbu bosqichni boshidan boshlaysizmi?")
-            .setNegativeButton("YO‘Q",null)
-            .setPositiveButton("HA",(d,w)->startLevel())
-            .show();
-    }
-
-    void winLevel() {
-        busy=true;
+    void winGame() {
+        if(gameOver) return;
+        gameOver=true;
 
         if(level<100) {
             level++;
             getPreferences(0).edit()
-                .putInt("level",level).apply();
+                .putInt("level_"+mode,level).apply();
 
             new AlertDialog.Builder(this)
-                .setTitle("🏆 AJOYIB NATIJA!")
-                .setMessage(
-                    "🌸 Bosqich muvaffaqiyatli bajarildi!\n\n"+
-                    "⭐ Ochko: "+score+
-                    "\n🌷 Keyingi bosqich: "+level
-                )
+                .setTitle("🏆 AJOYIB!")
+                .setMessage("Barcha plitkalar yig‘ildi!\n⭐ Ochko: "+score+
+                    "\nKeyingi bosqich: "+level)
                 .setCancelable(false)
-                .setPositiveButton("KEYINGI LEVEL",(d,w)->startLevel())
+                .setPositiveButton("KEYINGI BOSQICH",(d,w)->startGame())
                 .show();
         } else {
+            getPreferences(0).edit().putInt("level_"+mode,1).apply();
+
             new AlertDialog.Builder(this)
-                .setTitle("👑 G‘ALABA!")
-                .setMessage(
-                    "100 ta bosqichning barchasi tugadi!\n\n"+
-                    "Onajoningizga bo‘lgan mehringiz cheksiz! ❤️"
-                )
-                .setCancelable(false)
+                .setTitle("👑 100-LEVEL TUGADI!")
+                .setMessage("Siz barcha bosqichlarni tugatdingiz!")
                 .setPositiveButton("YANGI O‘YIN",(d,w)->{
                     level=1;
-                    getPreferences(0).edit()
-                        .putInt("level",1).apply();
-                    startLevel();
+                    startGame();
                 })
                 .show();
         }
     }
 
-    void loseLevel() {
-        busy=true;
+    void loseGame() {
+        if(gameOver) return;
+        gameOver=true;
 
         new AlertDialog.Builder(this)
-            .setTitle("🌷 Yana bir bor urinib ko‘ring!")
-            .setMessage(
-                "Bu safar maqsadga yetilmadi.\n"+
-                "Yig‘ilgan ochko: "+score+
-                "\nKerakli ochko: "+target
-            )
+            .setTitle("🌷 O‘yin tugadi")
+            .setMessage("Yig‘ish joylari to‘lib qoldi.\nYana urinib ko‘rasizmi?")
             .setCancelable(false)
-            .setPositiveButton("QAYTA O‘YNASH",(d,w)->startLevel())
+            .setNegativeButton("MENYU",(d,w)->showHome())
+            .setPositiveButton("QAYTA O‘YNASH",(d,w)->startGame())
             .show();
     }
 
     @Override
     public void onBackPressed() {
-        new AlertDialog.Builder(this)
-            .setTitle("🌸 O‘yindan chiqish")
-            .setMessage("O‘yinni yopmoqchimisiz?")
-            .setNegativeButton("DAVOM ETISH",null)
-            .setPositiveButton("CHIQISH",(d,w)->finish())
-            .show();
+        if(scroll!=null) showHome();
+        else super.onBackPressed();
     }
 }
