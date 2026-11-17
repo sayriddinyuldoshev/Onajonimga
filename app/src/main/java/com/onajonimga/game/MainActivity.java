@@ -62,6 +62,12 @@ public class MainActivity extends Activity {
         return d;
     }
 
+    int themeAccent() { return palettes[mode][1]; }
+    int themeDark() {
+        int c=themeAccent();
+        return Color.rgb((int)(Color.red(c)*0.68f),
+            (int)(Color.green(c)*0.68f),(int)(Color.blue(c)*0.68f));
+    }
     TextView text(String s,int size,int color,boolean bold) {
         TextView t=new TextView(this);
         t.setText(s);
@@ -81,7 +87,7 @@ public class MainActivity extends Activity {
 
     TextView button(String s) {
         TextView t=text(s,15,Color.WHITE,true);
-        t.setBackground(shape(0xFF344F86,18,0xFF91B8F5));
+        t.setBackground(shape(themeAccent(),18,0xCCFFFFFF));
         t.setElevation(dp(3));
         t.setPadding(dp(10),dp(12),dp(10),dp(12));
         return t;
@@ -192,13 +198,15 @@ public class MainActivity extends Activity {
     }
 
     void showGame() {
+        getWindow().setStatusBarColor(themeDark());
+        getWindow().setNavigationBarColor(themeDark());
         scroll=new ScrollView(this);
         root=vertical();
         root.setPadding(dp(12),dp(12),dp(12),dp(20));
         root.setGravity(Gravity.CENTER_HORIZONTAL);
         root.setBackground(new GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
-            new int[]{0xFF3D87CB,0xFF8DC5EB,0xFFEAF4FA}
+            new int[]{themeDark(),themeAccent(),themeDark()}
         ));
 
         LinearLayout top=new LinearLayout(this);
@@ -234,7 +242,7 @@ public class MainActivity extends Activity {
 
         LinearLayout trayBox=vertical();
         trayBox.setPadding(dp(5),dp(5),dp(5),dp(5));
-        trayBox.setBackground(shape(0xFF263F70,17,0xFF8ABCF2));
+        trayBox.setBackground(shape(0x33FFFFFF,17,0xAAFFFFFF));
 
         trayRow=new LinearLayout(this);
         trayRow.setGravity(Gravity.CENTER);
@@ -246,7 +254,7 @@ public class MainActivity extends Activity {
 
         boardFrame=new FrameLayout(this);
         boardFrame.setClipChildren(false);
-        boardFrame.setBackground(shape(0x55304F83,18,0xFFB9D9F6));
+        boardFrame.setBackground(shape(0x26FFFFFF,18,0x99FFFFFF));
         boardFrame.setElevation(dp(5));
 
         int screen=getResources().getDisplayMetrics().widthPixels;
@@ -342,7 +350,7 @@ public class MainActivity extends Activity {
                 slot=text("",20,Color.WHITE,false);
 
             slot.setBackground(shape(
-                0xFF172F5A,9,0xFF5277AA
+                0xD9FFFFFF,9,0xAAFFFFFF
             ));
 
             LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(
